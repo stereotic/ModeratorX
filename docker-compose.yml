@@ -1,0 +1,77 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: x-moderator-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: x_moderator
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: x-moderator-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Telegram + OAuth HTTP callback
+  bot:
+    build: .
+    container_name: x-moderator-bot
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      PROCESS_ROLE: bot
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/x_moderator
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "3000:3000"
+    command: ["node", "dist/bot.js"]
+
+  # BullMQ workers (scale independently)
+  worker:
+    build: .
+    container_name: x-moderator-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      PROCESS_ROLE: worker
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/x_moderator
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    command: ["node", "dist/worker.js"]
+
+volumes:
+  postgres_data:
+  redis_data:

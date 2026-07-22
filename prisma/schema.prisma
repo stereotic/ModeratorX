@@ -1,0 +1,263 @@
+/**
+ * Prisma schema — X Comment Moderator
+ *
+ * Design notes:
+ * - UserSettings is 1:1 with User (keeps identity separate from preferences)
+ * - Reply.status is a state machine (idempotent processing across retries)
+ * - Tokens are stored encrypted (AES-256-GCM) at the application layer
+ * - MonitoringJob is the DB source of truth; BullMQ is reconciled on worker boot
+ */
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Enums ──
+
+/** GPT sentiment classification */
+enum Sentiment {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+}
+
+/**
+ * Reply processing state machine.
+ * Transitions are claimed atomically to prevent double actions.
+ */
+enum ReplyStatus {
+  DISCOVERED
+  CLASSIFYING
+  CLASSIFIED
+  ACTION_PENDING
+  COMPLETED
+  SKIPPED
+  FAILED
+}
+
+/**
+ * How the bot acts on classification results.
+ * AUTO         — reply/hide immediately
+ * NOTIFY_ONLY  — log + Telegram notify, no X mutations
+ * DRY_RUN      — classify only, no side effects
+ */
+enum ModerationMode {
+  AUTO
+  NOTIFY_ONLY
+  DRY_RUN
+}
+
+/** Audit trail action types */
+enum ActionType {
+  REPLY_POSTED
+  REPLY_HIDDEN
+  ANALYSIS_COMPLETED
+  MONITORING_STARTED
+  MONITORING_STOPPED
+  TOKEN_REFRESHED
+  ACCOUNT_CONNECTED
+  ACCOUNT_DISCONNECTED
+  TWEET_ADDED
+  TWEET_REMOVED
+  SETTINGS_UPDATED
+  ERROR
+}
+
+// ── Models ──
+
+/** Telegram user who owns connected X accounts and monitored tweets */
+model User {
+  id               String   @id @default(uuid())
+  telegramId       BigInt   @unique
+  telegramUsername String?
+  firstName        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  settings        UserSettings?
+  twitterAccounts TwitterAccount[]
+  tweets          Tweet[]
+  actionLogs      ActionLog[]
+
+  @@map("users")
+}
+
+/**
+ * Per-user moderation preferences.
+ * Separated from User so identity changes never mix with product settings.
+ */
+model UserSettings {
+  id                 String         @id @default(uuid())
+  userId             String         @unique
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  gptPrompt          String?        @db.Text
+  checkIntervalSec   Int            @default(60)
+  moderationMode     ModerationMode @default(AUTO)
+  /** Minimum GPT confidence required before AUTO actions (0.0–1.0) */
+  confidenceThreshold Float         @default(0.75)
+  /** Optional daily OpenAI token budget; null = unlimited */
+  dailyTokenBudget   Int?
+
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@map("user_settings")
+}
+
+/** OAuth-linked X account (tokens encrypted at rest) */
+model TwitterAccount {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  twitterUserId  String
+  twitterUsername String
+  displayName    String?
+
+  accessToken    String   @db.Text
+  refreshToken   String   @db.Text
+  tokenExpiresAt DateTime
+
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tweets Tweet[]
+
+  @@unique([userId, twitterUserId])
+  @@index([userId])
+  @@index([tokenExpiresAt])
+  @@map("twitter_accounts")
+}
+
+/** Tweet under active or inactive monitoring */
+model Tweet {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  accountId     String
+  account       TwitterAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  tweetId       String
+  tweetUrl      String
+  tweetText     String?   @db.Text
+  authorId      String?
+
+  isMonitoring  Boolean   @default(false)
+  lastCheckedAt DateTime?
+  /** Pagination cursor — newest reply id seen so far */
+  sinceId       String?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  replies       Reply[]
+  monitoringJob MonitoringJob?
+
+  @@unique([accountId, tweetId])
+  @@index([userId])
+  @@index([isMonitoring])
+  @@map("tweets")
+}
+
+/** Discovered reply under a monitored tweet */
+model Reply {
+  id               String       @id @default(uuid())
+  tweetId          String
+  tweet            Tweet        @relation(fields: [tweetId], references: [id], onDelete: Cascade)
+
+  /** X reply tweet ID — global idempotency key */
+  replyTweetId     String       @unique
+  authorId         String
+  authorUsername   String?
+  text             String       @db.Text
+
+  status           ReplyStatus  @default(DISCOVERED)
+  sentiment        Sentiment?
+  confidence       Float?
+
+  wasReplied       Boolean      @default(false)
+  wasHidden        Boolean      @default(false)
+  /** X tweet ID of our published reply (anti-duplicate) */
+  postedReplyId    String?
+  attempts         Int          @default(0)
+  failureReason    String?      @db.Text
+  processedAt      DateTime?
+
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  gptResponse      GptResponse?
+  actionLogs       ActionLog[]
+
+  @@index([tweetId])
+  @@index([status])
+  @@index([tweetId, status])
+  @@map("replies")
+}
+
+/** Full audit of one OpenAI classification/generation call */
+model GptResponse {
+  id             String    @id @default(uuid())
+  replyId        String    @unique
+  reply          Reply     @relation(fields: [replyId], references: [id], onDelete: Cascade)
+
+  sentiment      Sentiment
+  confidence     Float?
+  generatedReply String?   @db.Text
+  promptUsed     String    @db.Text
+  model          String
+  tokensUsed     Int?
+
+  createdAt      DateTime  @default(now())
+
+  @@map("gpt_responses")
+}
+
+/** Append-only audit trail for user-visible and system actions */
+model ActionLog {
+  id           String     @id @default(uuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  replyId      String?
+  reply        Reply?     @relation(fields: [replyId], references: [id], onDelete: SetNull)
+
+  action       ActionType
+  details      Json?
+  isSuccess    Boolean    @default(true)
+  errorMessage String?    @db.Text
+
+  createdAt    DateTime   @default(now())
+
+  @@index([userId, createdAt])
+  @@index([action])
+  @@map("action_logs")
+}
+
+/**
+ * DB source of truth for monitoring schedules.
+ * Worker reconciles these rows into BullMQ repeatable jobs on boot.
+ */
+model MonitoringJob {
+  id              String   @id @default(uuid())
+  tweetId         String   @unique
+  tweet           Tweet    @relation(fields: [tweetId], references: [id], onDelete: Cascade)
+
+  bullJobId       String?
+  intervalSeconds Int      @default(60)
+  isActive        Boolean  @default(true)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([isActive])
+  @@map("monitoring_jobs")
+}
