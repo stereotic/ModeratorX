@@ -33,7 +33,7 @@ sudo npm install -g pm2
 # Установка Git
 sudo apt install -y git
 
-# Установка Nginx (если ещё нет)
+# Установка Nginx
 sudo apt install -y nginx
 sudo systemctl start nginx
 sudo systemctl enable nginx
@@ -42,24 +42,23 @@ sudo systemctl enable nginx
 ## 2. Настройка PostgreSQL
 
 ```bash
-# Вход в psql
 sudo -u postgres psql
 ```
 
-Выполнить в psql:
+В psql:
 ```sql
 CREATE DATABASE x_moderator;
-ALTER USER postgres PASSWORD 'your-password-here';
+ALTER USER postgres PASSWORD 'bbbc54e8bb3fdb14611f9349aa1e27d2';
 \q
 ```
 
-Проверить подключение:
+Проверка:
 ```bash
 psql -d x_moderator -U postgres -h localhost
-# Пароль: your-password-here
+# Пароль: bbbc54e8bb3fdb14611f9349aa1e27d2
 ```
 
-## 3. Клонирование проекта
+## 3. Клонирование
 
 ```bash
 cd /opt
@@ -68,14 +67,14 @@ sudo chown -R $USER:$USER x-moderator
 cd x-moderator
 ```
 
-## 4. Настройка .env
+## 4. .env.production
 
 ```bash
 cp .env .env.production
 nano .env.production
 ```
 
-Изменить для прода:
+Поменять для прода:
 
 ```env
 NODE_ENV=production
@@ -85,26 +84,19 @@ PROCESS_ROLE=all
 HTTP_HOST=0.0.0.0
 HTTP_PORT=3000
 
-# Telegram токен (уже есть)
-TELEGRAM_BOT_TOKEN=your-telegram-bot-token
+TELEGRAM_BOT_TOKEN=8311563650:AAFjIBfFvgkHyXj9YU-z9q0puX4KsaxdGIs
 
-# Twitter/X — те же
-TWITTER_CLIENT_ID=your-twitter-client-id
-TWITTER_CLIENT_SECRET=your-twitter-client-secret
-
-# ⚠️ Callback URL — замени на свой домен
+TWITTER_CLIENT_ID=OTU3M0RDQl9mc2MyaVJ5SloyM3c6MTpjaQ
+TWITTER_CLIENT_SECRET=NcLJrmei7RFM1P7sgVQFH-dx6ISh05gDUIMWIgkzExlcx2MM5e
 TWITTER_CALLBACK_URL=https://bot.crystalcards.store/auth/twitter/callback
 
-# OpenAI / OpenRouter
-OPENAI_API_KEY=your-openrouter-api-key
+OPENAI_API_KEY=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
 OPENAI_BASE_URL=https://openrouter.ai/api/v1
 OPENAI_MODEL=openai/gpt-4o-mini
 OPENAI_MAX_CONCURRENCY=5
 
-# ⚠️ PostgreSQL — замени localhost, если база не на этом сервере
-DATABASE_URL=postgresql://postgres:your-password@localhost:5432/x_moderator
+DATABASE_URL=postgresql://postgres:bbbc54e8bb3fdb14611f9349aa1e27d2@localhost:5432/x_moderator
 
-# Redis (локальный — без пароля)
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_PASSWORD=
@@ -113,8 +105,7 @@ REDIS_DB=0
 OAUTH_STATE_TTL_SECONDS=600
 TOKEN_REFRESH_SKEW_SECONDS=300
 
-# ⚠️ ENCRYPTION KEY — сохрани этот ключ! Без него не расшифровать X токены
-ENCRYPTION_KEY=your-encryption-key
+ENCRYPTION_KEY=5e04fec8f477ba0d197e7c07153a616d09fc1d2929162b9be9a281c028fa5dfd
 
 DEFAULT_CHECK_INTERVAL=60
 MIN_CHECK_INTERVAL=30
@@ -124,9 +115,9 @@ MAX_TWITTER_ACCOUNTS_PER_USER=5
 DEFAULT_CONFIDENCE_THRESHOLD=0.75
 ```
 
-> **Важно:** `ENCRYPTION_KEY` — единственный способ расшифровать access-токены X. Если потеряешь — пользователям придётся переподключать аккаунты. Сохрани его в password manager.
+> **ENCRYPTION_KEY** — храни в password manager. Без него X токены не расшифровать.
 
-## 5. Установка зависимостей и сборка
+## 5. Сборка
 
 ```bash
 npm ci
@@ -135,9 +126,7 @@ npx prisma migrate deploy
 npm run build
 ```
 
-## 6. Настройка Nginx + SSL
-
-Создать конфиг:
+## 6. Nginx + SSL
 
 ```bash
 sudo nano /etc/nginx/sites-available/x-moderator
@@ -162,130 +151,41 @@ server {
 }
 ```
 
-Включить сайт и получить SSL:
-
 ```bash
 sudo ln -s /etc/nginx/sites-available/x-moderator /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 
-# Установка certbot для Let's Encrypt
 sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d bot.crystalcards.store
 ```
 
-## 7. Запуск через PM2
+## 7. Запуск PM2
 
 ```bash
-# Загрузить .env.production в окружение
 ENV_PATH=/opt/x-moderator/.env.production pm2 start /opt/x-moderator/dist/main.js --name x-moderator
-
-# Сохранить список процессов
 pm2 save
 pm2 startup
 ```
 
-PM2 сам перезапустит бота при падении или перезагрузке сервера.
-
-Полезные команды:
-
+Команды:
 ```bash
-pm2 logs x-moderator       # смотреть логи
+pm2 logs x-moderator       # логи
 pm2 restart x-moderator    # перезапуск
 pm2 stop x-moderator       # остановка
-pm2 status                 # статус всех процессов
+pm2 status                 # статус
 ```
 
-## 8. Обновление callback URL в X Developer Portal
+## 8. X Developer Portal
 
-1. Зайди в [X Developer Portal](https://developer.twitter.com/en/portal)
-2. Выбери своё приложение
-3. В разделе **User authentication settings**:
+1. [X Developer Portal](https://developer.twitter.com/en/portal)
+2. Выбери приложение
+3. **User authentication settings**:
    - Redirect URL: `https://bot.crystalcards.store/auth/twitter/callback`
    - Website URL: `https://bot.crystalcards.store`
 4. Сохрани
 
-## 9. Перенос данных (опционально)
+## 9. Проверка
 
-Если на VPS чистая БД, пользователям нужно переподключить X аккаунты. Чтобы перенести существующие данные с локалки:
-
-```bash
-# На локальной машине: дамп
-pg_dump -U postgres -d x_moderator -F c > backup.dump
-
-# На VPS: восстановление
-pg_restore -U postgres -d x_moderator -F c backup.dump
-```
-
-## 10. Проверка
-
-1. Открой браузер: `https://bot.crystalcards.store/health` — должен вернуть `{"status":"ok"}`
-2. В Telegram: напиши `/start` своему боту
-3. Подключи X аккаунт через OAuth
-
-## Структура .env.production (шаблон)
-
-```
-NODE_ENV=production
-LOG_LEVEL=info
-PROCESS_ROLE=all
-HTTP_HOST=0.0.0.0
-HTTP_PORT=3000
-TELEGRAM_BOT_TOKEN=...
-TWITTER_CLIENT_ID=...
-TWITTER_CLIENT_SECRET=...
-TWITTER_CALLBACK_URL=https://bot.crystalcards.store/auth/twitter/callback
-OPENAI_API_KEY=...
-OPENAI_BASE_URL=https://openrouter.ai/api/v1
-OPENAI_MODEL=openai/gpt-4o-mini
-OPENAI_MAX_CONCURRENCY=5
-DATABASE_URL=postgresql://postgres:...@localhost:5432/x_moderator
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=
-REDIS_DB=0
-OAUTH_STATE_TTL_SECONDS=600
-TOKEN_REFRESH_SKEW_SECONDS=300
-ENCRYPTION_KEY=...
-DEFAULT_CHECK_INTERVAL=60
-MIN_CHECK_INTERVAL=30
-MAX_CHECK_INTERVAL=600
-MAX_MONITORED_TWEETS_PER_ACCOUNT=20
-MAX_TWITTER_ACCOUNTS_PER_USER=5
-DEFAULT_CONFIDENCE_THRESHOLD=0.75
-```
-
-## Команды одной строкой (для быстрой настройки)
-
-```bash
-# После чистой Ubuntu:
-apt update && apt upgrade -y
-curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-apt install -y nodejs postgresql redis-server nginx git certbot python3-certbot-nginx
-npm install -g pm2
-systemctl start postgresql redis-server nginx
-systemctl enable postgresql redis-server nginx
-```
-
-```bash
-# Клонирование и сборка:
-cd /opt
-git clone <URL> x-moderator
-cd x-moderator
-npm ci
-npx prisma generate && npx prisma migrate deploy
-npm run build
-```
-
-```bash
-# Запуск:
-pm2 start dist/main.js --name x-moderator
-pm2 save && pm2 startup
-```
-
-## Важно
-
-- **ENCRYPTION KEY** — храни в надёжном месте. Без него все X токены не расшифровать
-- **HTTP_PORT 3000** не должен быть открыт снаружи — Nginx проксирует на него локально
-- **Redis** без пароля — только если на локальном интерфейсе (127.0.0.1). Если Redis на отдельном сервере — настрой пароль
-- **Не используй `tsx` на проде** — собирай через `npm run build` и запускай `node dist/main.js`
-
+1. `https://bot.crystalcards.store/health` → `{"status":"ok"}`
+2. Telegram: `/start` боту
+3. Подключи X аккаунт
