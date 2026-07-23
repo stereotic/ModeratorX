@@ -60,13 +60,15 @@ export class TelegramBotService {
 
       const text =
         `${emoji} Результат модерации\n` +
-        `Действие: ${event.actionTaken}\n` +
+        `Действие: \`${event.actionTaken}\`\n` +
         `От: @${event.twitterUsername}\n` +
         `Тон: ${event.sentiment} (${(event.confidence * 100).toFixed(0)}%)\n` +
         `${event.replyText.slice(0, 100)}`;
 
       try {
-        await this.bot.api.sendMessage(event.telegramId.toString(), text);
+        await this.bot.api.sendMessage(event.telegramId.toString(), text, {
+          parse_mode: 'Markdown',
+        });
       } catch (notifyError) {
         log.warn({ err: notifyError }, 'Failed to send moderation notification');
       }
