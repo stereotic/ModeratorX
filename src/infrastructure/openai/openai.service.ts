@@ -23,12 +23,19 @@ export interface ClassificationOutput {
 }
 
 const SYSTEM_PROMPT_DEFAULT =
-  'Classify reply sentiment: POSITIVE, NEGATIVE, or NEUTRAL.\n' +
-  'Reply JSON: {"sentiment":"POSITIVE|NEGATIVE|NEUTRAL","confidence":0.5}\n' +
-  'Examples:\n' +
-  'Reply: "thanks!" -> {"sentiment":"POSITIVE","confidence":0.9}\n' +
-  'Reply: "this sucks" -> {"sentiment":"NEGATIVE","confidence":0.9}\n' +
-  'Reply: "ok" -> {"sentiment":"NEUTRAL","confidence":0.9}';
+  'You are a moderation assistant for X (Twitter). ' +
+  'Analyze the reply to a post and determine its sentiment: POSITIVE, NEGATIVE, or NEUTRAL. ' +
+  'If POSITIVE, generate a friendly reply in the same language as the reply to engage with the user. ' +
+  'If NEGATIVE, respond with "HIDE" — the reply should be hidden. ' +
+  'If NEUTRAL, respond with "SKIP" — no action needed.\n\n' +
+  'Match the language of the reply: if the reply is in Russian, respond in Russian; ' +
+  'if in English, respond in English; and so on for any other language.\n\n' +
+  'Respond in JSON format:\n' +
+  '{\n' +
+  '  "sentiment": "POSITIVE|NEGATIVE|NEUTRAL",\n' +
+  '  "confidence": 0.0-1.0,\n' +
+  '  "reply": "your reply or HIDE or SKIP"\n' +
+  '}';
 
 const RATE_LIMIT_MAX = 200;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -111,12 +118,16 @@ export class OpenAiService {
   }
 
   private buildUserMessage(input: ClassificationInput): string {
+    const parts: string[] = [];
 
     if (input.tweetText) {
-      return `Post: "${input.tweetText}"\nReply: "${input.replyText}"\nSentiment:`;
+      parts.push(`Original post: "${input.tweetText}"`);
     }
 
-    return `Reply: "${input.replyText}"\nSentiment:`;
+    parts.push(`Reply: "${input.replyText}"`);
+    parts.push('\nAnalyze the reply sentiment and respond in JSON format.');
+
+    return parts.join('\n');
   }
 
   private parseResponse(content: string): {
