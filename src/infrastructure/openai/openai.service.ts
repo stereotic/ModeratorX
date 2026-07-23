@@ -23,14 +23,12 @@ export interface ClassificationOutput {
 }
 
 const SYSTEM_PROMPT_DEFAULT =
-  'You classify replies. Reply options:\n' +
-  '- POSITIVE: like, compliment, support\n' +
-  '- NEGATIVE: insult, hate, spam, rude\n' +
-  '- NEUTRAL: question, fact, neutral, off-topic\n\n' +
-  'Output JSON:\n' +
-  '{"sentiment":"POSITIVE","confidence":0.9}\n' +
-  '{"sentiment":"NEGATIVE","confidence":0.8}\n' +
-  '{"sentiment":"NEUTRAL","confidence":0.7}';
+  'Classify reply sentiment: POSITIVE, NEGATIVE, or NEUTRAL.\n' +
+  'Reply JSON: {"sentiment":"POSITIVE|NEGATIVE|NEUTRAL","confidence":0.5}\n' +
+  'Examples:\n' +
+  'Reply: "thanks!" -> {"sentiment":"POSITIVE","confidence":0.9}\n' +
+  'Reply: "this sucks" -> {"sentiment":"NEGATIVE","confidence":0.9}\n' +
+  'Reply: "ok" -> {"sentiment":"NEUTRAL","confidence":0.9}';
 
 const RATE_LIMIT_MAX = 200;
 const RATE_LIMIT_WINDOW_MS = 60_000;
