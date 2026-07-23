@@ -52,15 +52,18 @@ export class TelegramBotService {
 
     // Wire moderation results → Telegram DM
     container.useCases.replies.processReply.setNotifier(async (event) => {
-      const emoji =
-        event.actionTaken === 'reply_posted' ? '💬' :
-        event.actionTaken === 'reply_hidden' ? '🚫' :
-        event.actionTaken === 'hide_denied' ? '⚠️' :
-        event.actionTaken === 'dry_run' ? '🧪' : '⚪';
+      const actionLabels: Record<string, string> = {
+        reply_posted: '💬 Ответ опубликован',
+        reply_hidden: '🚫 Комментарий скрыт',
+        hide_denied:  '⚠️ Не удалось скрыть',
+        dry_run:      '🧪 Анализ (dry run)',
+        no_action:    '⚪ Без действий',
+      };
+
+      const actionLabel = actionLabels[event.actionTaken] ?? `⚪ ${event.actionTaken}`;
 
       const text =
-        `${emoji} *Результат модерации*\n\n` +
-        `▸ *Действие:* \`${event.actionTaken}\`\n` +
+        `${actionLabel}\n\n` +
         `▸ *От:* @${event.twitterUsername}\n` +
         `▸ *Тон:* ${event.sentiment} (${(event.confidence * 100).toFixed(0)}%)\n\n` +
         `> ${event.replyText.slice(0, 100)}`;
