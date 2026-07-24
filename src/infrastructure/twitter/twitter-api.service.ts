@@ -115,9 +115,10 @@ export class TwitterApiService {
       const paginator = await client.v2.search(query, {
         max_results: params.maxResults ?? 50,
         ...(params.sinceId ? { since_id: params.sinceId } : {}),
-        'tweet.fields': ['author_id', 'text', 'created_at', 'conversation_id'],
-        expansions: ['author_id'],
+        'tweet.fields': ['author_id', 'text', 'created_at', 'conversation_id', 'attachments'],
+        expansions: ['author_id', 'attachments.media_keys'],
         'user.fields': ['username'],
+        'media.fields': ['url', 'preview_image_url', 'type'],
       });
 
       const usersById = new Map<string, string>();
@@ -125,6 +126,18 @@ export class TwitterApiService {
       if (paginator.includes?.users) {
         for (const user of paginator.includes.users) {
           usersById.set(user.id, user.username);
+        }
+      }
+
+      const mediaByKey = new Map<string, string>();
+
+      if (paginator.includes?.media) {
+        for (const media of paginator.includes.media) {
+          const mediaUrl = media.type === 'photo' ? media.url : (media.preview_image_url ?? null);
+
+          if (mediaUrl) {
+            mediaByKey.set(media.media_key, mediaUrl);
+          }
         }
       }
 
@@ -139,6 +152,18 @@ export class TwitterApiService {
             newestId = tweet.id;
           }
 
+          const mediaUrls: string[] = [];
+
+          if (tweet.attachments?.media_keys) {
+            for (const key of tweet.attachments.media_keys) {
+              const url = mediaByKey.get(key);
+
+              if (url) {
+                mediaUrls.push(url);
+              }
+            }
+          }
+
           replies.push({
             replyTweetId: tweet.id,
             authorId: tweet.author_id ?? '',
@@ -146,6 +171,7 @@ export class TwitterApiService {
               ? (usersById.get(tweet.author_id) ?? null)
               : null,
             text: tweet.text,
+            mediaUrls,
           });
         }
       }

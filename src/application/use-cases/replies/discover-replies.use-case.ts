@@ -64,6 +64,7 @@ export class DiscoverRepliesUseCase {
         authorId: reply.authorId,
         authorUsername: reply.authorUsername ?? undefined,
         text: reply.text,
+        mediaUrls: reply.mediaUrls.length > 0 ? [...reply.mediaUrls] : undefined,
       }));
 
       discovered = await this.replies.createManyIgnoreDuplicates(replyData);

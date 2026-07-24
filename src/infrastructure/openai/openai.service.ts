@@ -11,6 +11,7 @@ export interface ClassificationInput {
   readonly replyText: string;
   readonly tweetText: string | null;
   readonly customPrompt: string | null;
+  readonly imageUrls?: readonly string[];
 }
 
 export interface ClassificationOutput {
@@ -64,13 +65,24 @@ export class OpenAiService {
     );
     const systemPrompt = input.customPrompt ?? SYSTEM_PROMPT_DEFAULT;
     const userMessage = this.buildUserMessage(input);
+    const hasImages = input.imageUrls && input.imageUrls.length > 0;
+
+    const userContent = hasImages
+      ? [
+          { type: 'text' as const, text: userMessage },
+          ...input.imageUrls.map((url) => ({
+            type: 'image_url' as const,
+            image_url: { url },
+          })),
+        ]
+      : userMessage;
 
     try {
       const response = await this.client.chat.completions.create({
         model: this.model,
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
+          { role: 'user', content: userContent },
         ],
         temperature: 0.3,
         max_tokens: 300,

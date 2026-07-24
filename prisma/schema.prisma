@@ -178,6 +178,8 @@ model Reply {
   authorId         String
   authorUsername   String?
   text             String       @db.Text
+  /** URLs of attached media (photos, GIF previews) */
+  mediaUrls        Json?
 
   status           ReplyStatus  @default(DISCOVERED)
   sentiment        Sentiment?

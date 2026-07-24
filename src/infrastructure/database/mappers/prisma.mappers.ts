@@ -96,6 +96,7 @@ export function mapReply(row: Reply): ReplyEntity {
     authorId: row.authorId,
     authorUsername: row.authorUsername,
     text: row.text,
+    mediaUrls: toMediaUrls(row.mediaUrls),
     status: row.status,
     sentiment: row.sentiment,
     confidence: row.confidence,
@@ -166,4 +167,15 @@ function toPlainRecord(value: Prisma.JsonValue | null): Record<string, unknown> 
   }
 
   return null;
+}
+
+/**
+ * Convert Prisma JsonValue (string array) → readonly string[].
+ */
+function toMediaUrls(value: Prisma.JsonValue | null): readonly string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === 'string');
 }

@@ -14,6 +14,7 @@ export interface ReplyEntity {
   readonly authorId: string;
   readonly authorUsername: string | null;
   readonly text: string;
+  readonly mediaUrls: readonly string[];
   readonly status: ReplyStatus;
   readonly sentiment: Sentiment | null;
   readonly confidence: number | null;
@@ -34,6 +35,7 @@ export interface CreateReplyData {
   readonly authorId: string;
   readonly authorUsername?: string;
   readonly text: string;
+  readonly mediaUrls?: readonly string[];
 }
 
 /** Fields that can be updated during pipeline processing */

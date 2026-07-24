@@ -6,6 +6,7 @@
  */
 
 import type { PrismaClient } from '../../../generated/prisma/client.js';
+import { Prisma } from '../../../generated/prisma/client.js';
 import type { ReplyRepository } from '../../../domain/repositories/reply.repository.js';
 import type { ReplyStatus } from '../../../domain/enums/index.js';
 import type {
@@ -134,6 +135,7 @@ export class PrismaReplyRepository implements ReplyRepository {
         authorId: data.authorId,
         authorUsername: data.authorUsername ?? null,
         text: data.text,
+        mediaUrls: data.mediaUrls ?? Prisma.JsonNull,
       },
     });
 
@@ -152,6 +154,7 @@ export class PrismaReplyRepository implements ReplyRepository {
         authorId: item.authorId,
         authorUsername: item.authorUsername ?? null,
         text: item.text,
+        mediaUrls: item.mediaUrls ?? Prisma.JsonNull,
       })),
       skipDuplicates: true,
     });

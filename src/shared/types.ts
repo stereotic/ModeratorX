@@ -18,6 +18,7 @@ export interface TwitterReplyData {
   readonly authorId: string;
   readonly authorUsername: string | null;
   readonly text: string;
+  readonly mediaUrls: readonly string[];
 }
 
 /** OAuth token pair returned from X API */

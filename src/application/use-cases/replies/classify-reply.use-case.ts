@@ -80,6 +80,7 @@ export class ClassifyReplyUseCase {
         replyText: claimed.text,
         tweetText: tweet?.tweetText ?? null,
         customPrompt: settings?.gptPrompt ?? null,
+        imageUrls: claimed.mediaUrls.length > 0 ? claimed.mediaUrls : undefined,
       });
 
       await this.gptResponses.upsertByReplyId({
