@@ -25,13 +25,18 @@ export interface ClassificationOutput {
 
 const SYSTEM_PROMPT_DEFAULT =
   'You are a moderation assistant for X (Twitter). ' +
-  'Analyze the reply to a post and determine its sentiment: POSITIVE, NEGATIVE, or NEUTRAL. ' +
+  'Analyze the reply text AND any attached images, then classify the overall sentiment.\n\n' +
+  'If images contain:\n' +
+  '- Hate symbols, threats, weapons, violence, gore, NSFW content → NEGATIVE\n' +
+  '- Insults, rudeness, harassment (in text or on signs in images) → NEGATIVE\n' +
+  '- Friendly, funny, supportive, cute content → POSITIVE\n' +
+  '- Neutral memes, screenshots, random photos, or unclear content → NEUTRAL\n\n' +
   'If POSITIVE, generate a friendly reply in the same language as the reply to engage with the user. ' +
   'If NEGATIVE, respond with "HIDE" — the reply should be hidden. ' +
   'If NEUTRAL, respond with "SKIP" — no action needed.\n\n' +
   'Match the language of the reply: if the reply is in Russian, respond in Russian; ' +
   'if in English, respond in English; and so on for any other language.\n\n' +
-  'Respond in JSON format:\n' +
+  'Respond ONLY with valid JSON:\n' +
   '{\n' +
   '  "sentiment": "POSITIVE|NEGATIVE|NEUTRAL",\n' +
   '  "confidence": 0.0-1.0,\n' +
@@ -67,15 +72,21 @@ export class OpenAiService {
     const userMessage = this.buildUserMessage(input);
     const hasImages = input.imageUrls && input.imageUrls.length > 0;
 
-    const userContent = hasImages
-      ? [
-          { type: 'text' as const, text: userMessage },
-          ...input.imageUrls.map((url) => ({
-            type: 'image_url' as const,
-            image_url: { url },
-          })),
-        ]
-      : userMessage;
+    let userContent: string | { type: 'text' | 'image_url'; text?: string; image_url?: { url: string } }[] = userMessage;
+
+    if (hasImages) {
+      log.debug({ imageUrls: input.imageUrls }, 'Classifying reply with images');
+      const dataUris = await Promise.all(
+        input.imageUrls.map((url) => this.urlToDataUri(url)),
+      );
+      userContent = [
+        { type: 'text' as const, text: userMessage },
+        ...dataUris.map((uri) => ({
+          type: 'image_url' as const,
+          image_url: { url: uri },
+        })),
+      ];
+    }
 
     try {
       const response = await this.client.chat.completions.create({
@@ -86,7 +97,6 @@ export class OpenAiService {
         ],
         temperature: 0.3,
         max_tokens: 300,
-        response_format: { type: 'json_object' },
       });
 
       const choice = response.choices[0];
@@ -137,9 +147,21 @@ export class OpenAiService {
     }
 
     parts.push(`Reply: "${input.replyText}"`);
+    if (input.imageUrls && input.imageUrls.length > 0) {
+      parts.push(`The reply contains ${input.imageUrls.length} image(s). Analyze them for harmful/offensive/NSFW content alongside the text.`);
+    }
+
     parts.push('\nAnalyze the reply sentiment and respond in JSON format.');
 
     return parts.join('\n');
+  }
+
+  private async urlToDataUri(url: string): Promise<string> {
+    const response = await fetch(url);
+    const mimeType = response.headers.get('content-type') ?? 'image/jpeg';
+    const buffer = await response.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString('base64');
+    return `data:${mimeType};base64,${base64}`;
   }
 
   private parseResponse(content: string): {
